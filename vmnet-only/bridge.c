@@ -684,14 +684,11 @@ VNetBridgeReceiveFromVNet(VNetJack        *this, // IN: jack
 	 }
          spin_unlock_irqrestore(&bridge->historyLock, flags);
 
-         /*
-          * We used to cli() before calling netif_rx() here. It was probably
-          * unneeded (as we never did it in netif.c, and the code worked). In
-          * any case, now that we are using netif_rx_ni(), we should certainly
-          * not do it, or netif_rx_ni() will deadlock on the cli() lock --hpreg
-          */
-
-	 netif_rx_ni(clone);
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 18, 0) && !defined(RHEL91_BACKPORTS)
+         netif_rx_ni(clone);
+#else
+         netif_rx(clone);
+#endif
 #	 if LOGLEVEL >= 4
 	 vnetTime = ktime_get_ns();
 #	 endif

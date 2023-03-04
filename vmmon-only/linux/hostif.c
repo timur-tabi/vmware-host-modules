@@ -2367,7 +2367,12 @@ isVAReadable(VA r)  // IN:
    int ret;
 
    r = APICR_TO_ADDR(r, APICR_VERSION);
-#ifdef HAVE_GET_KERNEL_NOFAULT
+#if defined(HAVE_GET_KERNEL_NOFAULT) || LINUX_VERSION_CODE >= KERNEL_VERSION(5, 17, 0) || \
+    defined(__get_kernel_nofault)
+   /*
+    * Exists from 5.10, first indicated by HAVE_GET_KERNEL_NOFAULT,
+    * and from post-5.17 just existing everywhere.
+    */
    ret = get_kernel_nofault(dummy, (void *)r);
 #else
    {

@@ -522,6 +522,46 @@ VNetCopyDatagram(const struct sk_buff *skb,	// IN: skb to copy
 /*
  *----------------------------------------------------------------------
  *
+ * VNetCsumAndCopyToUser --
+ *
+ *      Checksum data and copy them to userspace.
+ *
+ * Results:
+ *      folded checksum (non-zero value) on success,
+ *      err set to 0 on success, negative errno on failure.
+ *
+ * Side effects:
+ *      Data copied to the buffer.
+ *
+ *----------------------------------------------------------------------
+ */
+
+static unsigned int
+VNetCsumAndCopyToUser(const void *src,   // IN: Source
+                      void *dst,         // IN: Destination
+                      int len,           // IN: Bytes to copy
+                      int *err)          // OUT: Error code
+{
+   unsigned int csum;
+
+#if COMPAT_LINUX_VERSION_CHECK_LT(5, 10, 0)
+   csum = csum_and_copy_to_user(src, dst, len, 0, err);
+#elif LINUX_VERSION_CODE < KERNEL_VERSION(5, 19, 0)
+   csum = csum_and_copy_to_user(src, dst, len);
+   *err = (csum == 0) ? -EFAULT : 0;
+#else
+   csum = csum_partial(src, len, ~0U);
+   if (copy_to_user(dst, src, len))
+      csum = 0;
+   *err = (csum == 0) ? -EFAULT : 0;
+#endif
+   return csum;
+}
+
+
+/*
+ *----------------------------------------------------------------------
+ *
  * VNetCsumCopyDatagram --
  *
  *      Copy part of datagram to userspace doing checksum at same time.
@@ -561,12 +601,7 @@ VNetCsumCopyDatagram(const struct sk_buff *skb,	// IN: skb to copy
       return -EINVAL;
    }
 
-#if COMPAT_LINUX_VERSION_CHECK_LT(5, 10, 0)
-   csum = csum_and_copy_to_user(skb->data + offset, curr, len, 0, &err);
-#else
-   csum = csum_and_copy_to_user(skb->data + offset, curr, len);
-   err = (csum == 0) ? -EFAULT : 0;
-#endif
+   csum = VNetCsumAndCopyToUser(skb->data + offset, curr, len, &err);
    if (err) {
       return err;
    }
@@ -580,14 +615,8 @@ VNetCsumCopyDatagram(const struct sk_buff *skb,	// IN: skb to copy
 	 const void *vaddr;
 
 	 vaddr = kmap(skb_frag_page(frag));
-#if COMPAT_LINUX_VERSION_CHECK_LT(5, 10, 0)
-	 tmpCsum = csum_and_copy_to_user(vaddr + skb_frag_off(frag),
-					 curr, skb_frag_size(frag), 0, &err);
-#else
-	 tmpCsum = csum_and_copy_to_user(vaddr + skb_frag_off(frag),
-					 curr, skb_frag_size(frag));
-         err = (tmpCsum == 0) ? -EFAULT : 0;
-#endif
+         tmpCsum = VNetCsumAndCopyToUser(vaddr + skb_frag_off(frag),
+                                         curr, skb_frag_size(frag), &err);
 	 kunmap(skb_frag_page(frag));
 
 	 if (err) {
